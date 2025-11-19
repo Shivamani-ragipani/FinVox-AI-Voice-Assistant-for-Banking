@@ -1,0 +1,67 @@
+/* Status.css */
+:root {
+  --pill-bg: #0f2035;
+  --pill-dot: #4da6ff;
+  --pill-text: #ffffff;
+}
+
+.fv-status-wrap {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  padding: 1.3rem 0;
+}
+
+.fv-status-pill {
+  background: var(--pill-bg);
+  color: var(--pill-text);
+  padding: 12px 26px;
+  border-radius: 50px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(4px);
+  animation: statusFadeIn 0.3s ease-out;
+}
+
+.fv-status-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--pill-dot);
+  animation: statusPulse 1.3s infinite ease-in-out;
+}
+
+.fv-status-msg {
+  font-size: 1rem;
+  white-space: nowrap;
+}
+
+@keyframes statusPulse {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.85);
+    opacity: 0.6;
+  }
+}
+
+@keyframes statusFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

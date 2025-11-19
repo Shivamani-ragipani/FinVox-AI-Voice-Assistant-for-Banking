@@ -1,0 +1,69 @@
+/* App.css */
+
+:root {
+  --bg-main: #f4f7fb;
+  --bg-chat: #ffffff;
+  --shadow-soft: 0 6px 22px rgba(0, 0, 0, 0.08);
+  --radius: 18px;
+}
+
+html, body, #root, .app-root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: var(--bg-main);
+  font-family: "Inter", sans-serif;
+}
+
+.container {
+  width: 100%;
+  max-width: 1300px;
+  margin: 0 auto;
+  padding: 1.2rem;
+  display: flex;
+  gap: 1.8rem;
+  align-items: flex-start;
+}
+
+.main-content {
+  flex: 1;
+  min-width: 360px;
+  padding: 1.2rem 1rem;
+  background: var(--bg-chat);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.chat-container {
+  flex: 2;
+  min-height: 550px;
+  background: var(--bg-chat);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-soft);
+  padding: 1.2rem 1rem;
+}
+
+@media (max-width: 900px) {
+  .container {
+    flex-direction: column;
+    padding: 1rem;
+  }
+
+  .chat-container {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .main-content {
+    padding: 0.8rem;
+  }
+
+  .chat-container {
+    padding: 0.8rem;
+  }
+}

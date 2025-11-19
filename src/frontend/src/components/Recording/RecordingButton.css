@@ -1,0 +1,97 @@
+/* RecordingButton.css */
+:root {
+  --rec-red: #ff3b3b;
+  --rec-red-dark: #d62828;
+  --rec-blue: #2196f3;
+  --rec-blue-dark: #1b82d0;
+  --text-white: #ffffff;
+}
+
+.fv-rec-btn {
+  width: 100%;
+  padding: 14px 22px;
+  border: none;
+  border-radius: 14px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-white);
+  cursor: pointer;
+  transition: 0.25s ease;
+  letter-spacing: 0.3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+
+.fv-rec-btn.idle {
+  background: var(--rec-blue);
+}
+
+.fv-rec-btn.idle:hover:not(.disabled) {
+  background: var(--rec-blue-dark);
+  transform: translateY(-2px);
+}
+
+.fv-rec-btn.rec {
+  background: var(--rec-red);
+}
+
+.fv-rec-btn.rec:hover:not(.disabled) {
+  background: var(--rec-red-dark);
+  transform: translateY(-2px);
+}
+
+.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.fv-icon-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mic-icon {
+  z-index: 2;
+}
+
+.mic-circle {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  opacity: 0;
+  transform: scale(0.6);
+}
+
+.mic-circle.pulse {
+  animation: pulseAnim 1.2s infinite ease-in-out;
+  opacity: 1;
+}
+
+@keyframes pulseAnim {
+  0% {
+    transform: scale(0.55);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.15;
+  }
+  100% {
+    transform: scale(0.55);
+    opacity: 0.5;
+  }
+}
+
+.fv-text {
+  z-index: 3;
+}
