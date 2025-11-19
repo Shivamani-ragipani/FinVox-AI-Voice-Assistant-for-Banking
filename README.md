@@ -1,6 +1,6 @@
 ## FinVox AI
 
-![Banner](project_info/FinVox-AI-project-flow.png) 
+![Banner](project_info/FinVox%20AI.jpg) 
 
 FinVox AI Voice Assistant is a fully intelligent, real-time Voice-to-Voice Banking Assistant that allows users to interact with their banking data through natural spoken conversations.
 
