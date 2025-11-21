@@ -55,7 +55,6 @@ Banks still rely heavily on text-based or UI-heavy dashboards. Users often strug
 - Logfire for monitoring + analysis  
 
 ---
----
 
 # Workflow
 
