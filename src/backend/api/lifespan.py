@@ -20,9 +20,11 @@ from ai_services.factories import (
     create_openai_client,
 )
 from ai_services.tools import (
+    get_account_balance,
     get_recent_transactions,
     summarize_spending,
     detect_unusual_spending,
+    get_bank_schemes,
 )
 
 
@@ -38,53 +40,32 @@ class State(TypedDict):
 async def app_lifespan(app: FastAPI) -> AsyncIterator[State]:
     settings = get_settings()
 
-    # ---------------------------------------------------------
-    # System prompt
-    # ---------------------------------------------------------
     BASE_DIR = os.path.dirname(os.path.dirname(__file__))
     SYSTEM_PROMPT_PATH = os.path.join(
         BASE_DIR, "project_info", "agent_system_prompt.md"
     )
 
-    if not os.path.exists(SYSTEM_PROMPT_PATH):
-        raise FileNotFoundError(
-            f"System prompt file missing: {SYSTEM_PROMPT_PATH}"
-        )
-
     system_prompt = open(SYSTEM_PROMPT_PATH, "r", encoding="utf-8").read()
 
-    # ---------------------------------------------------------
-    # PostgreSQL pool
-    # ---------------------------------------------------------
     pool = create_db_connection_pool(settings=settings)
 
-    # ---------------------------------------------------------
-    # AI clients
-    # ---------------------------------------------------------
     openai_client = create_openai_client(settings=settings)
     groq_client = create_groq_client(settings=settings)
     groq_model = create_groq_model(groq_client=groq_client)
 
-    # ---------------------------------------------------------
-    # SQLITE for Transactions
-    # ---------------------------------------------------------
-    SQLITE_PATH = os.path.join(BASE_DIR, "customer_transaction_db", "transactions.db")
-
-    os.makedirs(os.path.dirname(SQLITE_PATH), exist_ok=True)
-
-    if not os.path.exists(SQLITE_PATH):
-        raise FileNotFoundError(f"SQLite DB NOT FOUND at: {SQLITE_PATH}")
+    SQLITE_PATH = os.path.join(
+        BASE_DIR, "customer_transaction_db", "transactions.db"
+    )
 
     sqlite_db = await aiosqlite.connect(SQLITE_PATH)
     sqlite_db.row_factory = aiosqlite.Row
 
-    # ---------------------------------------------------------
-    # Tools
-    # ---------------------------------------------------------
     tools = [
+        Tool(function=get_account_balance, takes_ctx=True),
         Tool(function=get_recent_transactions, takes_ctx=True),
         Tool(function=summarize_spending, takes_ctx=True),
         Tool(function=detect_unusual_spending, takes_ctx=True),
+        Tool(function=get_bank_schemes, takes_ctx=True),
     ]
 
     groq_agent = create_groq_agent(
@@ -93,14 +74,9 @@ async def app_lifespan(app: FastAPI) -> AsyncIterator[State]:
         system_prompt=system_prompt,
     )
 
-    # ---------------------------------------------------------
-    # Startup work
-    # ---------------------------------------------------------
-    logger.info("Opening database connection pool")
     await pool.open()
     await create_main_table(pool)
 
-    # Save to state (used in dependencies.py)
     app.state.sqlite_db = sqlite_db
     app.state.groq_agent = groq_agent
     app.state.groq_client = groq_client
@@ -114,17 +90,7 @@ async def app_lifespan(app: FastAPI) -> AsyncIterator[State]:
         "sqlite_db": sqlite_db,
     }
 
-    # ---------------------------------------------------------
-    # Cleanup
-    # ---------------------------------------------------------
-    logger.info("Closing SQLite DB")
     await sqlite_db.close()
-
-    logger.info("Closing PostgreSQL pool")
     await pool.close()
-
-    logger.info("Closing OpenAI client")
     await openai_client.close()
-
-    logger.info("Closing Groq client")
     await groq_client.close()

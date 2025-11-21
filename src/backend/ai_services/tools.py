@@ -1,64 +1,87 @@
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from datetime import datetime, timedelta
 from loguru import logger
 from pydantic_ai import RunContext
 
 from ai_services.agent import Dependencies
 
+DEFAULT_CUSTOMER = "Shivamani"
 
-# ======================================================
-#  GET RECENT TRANSACTIONS
-# ======================================================
-async def get_recent_transactions(
+
+async def get_account_balance(
     ctx: RunContext[Dependencies],
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    category: Optional[str] = None,
-    merchant: Optional[str] = None,
-    last_n: Optional[int] = 10,
-) -> List[Dict]:
-
-    query = """
-        SELECT Transaction_Amount, Date, Merchant_Name, Category
-        FROM Transactions
-        WHERE 1=1
-    """
-
-    params: list = []
-
-    # Filters
-    if start_date:
-        query += " AND Date >= ?"
-        params.append(start_date)
-
-    if end_date:
-        query += " AND Date <= ?"
-        params.append(end_date)
-
-    if category:
-        query += " AND Category = ?"
-        params.append(category)
-
-    if merchant:
-        query += " AND Merchant_Name = ?"
-        params.append(merchant)
-
-    # Sort & limit
-    query += " ORDER BY Date DESC LIMIT ?"
-    params.append(int(last_n))
-
+    customer_name: str = DEFAULT_CUSTOMER,
+) -> Dict[str, Any]:
     try:
         sqlite_db = ctx.deps.sqlite_db
 
-        logger.debug(f"\n[get_recent_transactions] Executing:\n{query}\nParams={params}")
+        query = """
+            SELECT account_number, bank_name, currency, current_balance
+            FROM account_balances
+            WHERE LOWER(customer_name) = LOWER(?)
+            LIMIT 1;
+        """
+
+        logger.debug(f"[get_account_balance] Executing query for {customer_name}")
+
+        cursor = await sqlite_db.execute(query, (customer_name,))
+        row = await cursor.fetchone()
+        await cursor.close()
+
+        if not row:
+            return {"message": f"No account found for {customer_name}."}
+
+        return {
+            "customer_name": customer_name,
+            "bank_name": row["bank_name"],
+            "account_number": row["account_number"],
+            "balance_inr": f"₹{row['current_balance']:,.2f}",
+        }
+
+    except Exception as e:
+        logger.error(f"❌ ERROR in get_account_balance: {e}")
+        return {"error": str(e)}
+
+
+async def get_recent_transactions(
+    ctx: RunContext[Dependencies],
+    last_n: int = 10,
+    customer_name: str = DEFAULT_CUSTOMER,
+) -> List[Dict[str, Any]]:
+    try:
+        sqlite_db = ctx.deps.sqlite_db
+
+        query = """
+            SELECT t.txn_date, t.amount, t.txn_type,
+                   t.merchant_name, t.category
+            FROM transactions t
+            JOIN accounts a ON a.id = t.account_id
+            JOIN customers c ON c.id = a.customer_id
+            WHERE LOWER(c.name) = LOWER(?)
+            ORDER BY t.txn_date DESC
+            LIMIT ?;
+        """
+
+        params = (customer_name, last_n)
+        logger.debug(f"[get_recent_transactions] Executing: Params={params}")
 
         cursor = await sqlite_db.execute(query, params)
         rows = await cursor.fetchall()
         await cursor.close()
 
-        results = [dict(row) for row in rows]
+        results: List[Dict[str, Any]] = []
+        for row in rows:
+            amt = float(row["amount"])
+            results.append(
+                {
+                    "date": row["txn_date"],
+                    "amount_inr": f"₹{abs(amt):,.2f}",
+                    "direction": "debit" if amt < 0 else "credit",
+                    "merchant": row["merchant_name"],
+                    "category": row["category"],
+                }
+            )
 
-        logger.debug(f"[get_recent_transactions] Returned {len(results)} rows")
         return results
 
     except Exception as e:
@@ -66,136 +89,145 @@ async def get_recent_transactions(
         return []
 
 
-# ======================================================
-#  SUMMARIZE SPENDING
-# ======================================================
 async def summarize_spending(
     ctx: RunContext[Dependencies],
-    time_period: str = "this week",
-    return_budget_status: bool = False,
-    budget_limits: Dict[str, int] = {
-        "Cosmetic": 20000,
-        "Travel": 100000,
-        "Clothing": 300000,
-        "Electronics": 150000,
-        "Food": 50000,
-        "Restaurant": 60000,
-        "Shopping": 120000,
-    },
-) -> Dict:
-
-    today = datetime.today()
-
-    time_period_lower = time_period.lower()
-
-    if "week" in time_period_lower:
-        start_date = (today - timedelta(days=7)).strftime("%Y-%m-%d")
-    elif "month" in time_period_lower:
-        start_date = (today - timedelta(days=30)).strftime("%Y-%m-%d")
-    else:
-        start_date = (today - timedelta(days=7)).strftime("%Y-%m-%d")
-
-    query = """
-        SELECT Category, SUM(Transaction_Amount)
-        FROM Transactions
-        WHERE Date >= ?
-        GROUP BY Category
-    """
-
+    customer_name: str = DEFAULT_CUSTOMER,
+    time_period: str = "this month",
+) -> Dict[str, float]:
     try:
         sqlite_db = ctx.deps.sqlite_db
+        today = datetime.today()
 
-        logger.debug(f"\n[summarize_spending] Executing:\n{query}\nParams={[start_date]}")
+        if "week" in time_period.lower():
+            start = today - timedelta(days=7)
+        else:
+            start = today - timedelta(days=30)
 
-        cursor = await sqlite_db.execute(query, [start_date])
+        start_str = start.strftime("%Y-%m-%d")
+
+        query = """
+            SELECT t.category, SUM(ABS(t.amount)) AS total_spent
+            FROM transactions t
+            JOIN accounts a ON a.id = t.account_id
+            JOIN customers c ON a.customer_id = c.id
+            WHERE LOWER(c.name) = LOWER(?)
+              AND t.amount < 0
+              AND t.txn_date >= ?
+            GROUP BY t.category;
+        """
+
+        params = (customer_name, start_str)
+        logger.debug(f"[summarize_spending] Executing: Params={params}")
+
+        cursor = await sqlite_db.execute(query, params)
         rows = await cursor.fetchall()
         await cursor.close()
 
-        totals = {row[0]: row[1] for row in rows}
-
-        if not return_budget_status:
-            return totals
-
-        # Budget comparison
-        output = {}
-        for category, spent in totals.items():
-            limit = budget_limits.get(category, float("inf"))
-            output[category] = {
-                "spent": spent,
-                "budget": limit,
-                "status": "over budget" if spent > limit else "within budget",
-            }
-
-        return output
+        return {row["category"]: float(row["total_spent"]) for row in rows}
 
     except Exception as e:
         logger.error(f"❌ ERROR in summarize_spending: {e}")
         return {}
 
 
-# ======================================================
-#  DETECT UNUSUAL SPENDING
-# ======================================================
 async def detect_unusual_spending(
     ctx: RunContext[Dependencies],
-    threshold: Optional[float] = None,
-    time_period: str = "last month",
-) -> List[Dict]:
-
-    today = datetime.today()
-    time_period_lower = time_period.lower()
-
-    if "month" in time_period_lower:
-        start_date = (today - timedelta(days=30)).strftime("%Y-%m-%d")
-    else:
-        start_date = (today - timedelta(days=30)).strftime("%Y-%m-%d")
-
-    avg_query = """
-        SELECT AVG(Transaction_Amount)
-        FROM Transactions
-        WHERE Date >= ?
-    """
-
+    customer_name: str = DEFAULT_CUSTOMER,
+    threshold_multiplier: float = 1.5,
+) -> List[Dict[str, Any]]:
     try:
         sqlite_db = ctx.deps.sqlite_db
+        start = datetime.today() - timedelta(days=30)
+        start_str = start.strftime("%Y-%m-%d")
 
-        logger.debug(f"\n[detect_unusual_spending] AVG Query:\n{avg_query}\nParams={[start_date]}")
+        avg_query = """
+            SELECT AVG(ABS(t.amount))
+            FROM transactions t
+            JOIN accounts a ON t.account_id = a.id
+            JOIN customers c ON a.customer_id = c.id
+            WHERE LOWER(c.name) = LOWER(?)
+              AND t.amount < 0
+              AND t.txn_date >= ?;
+        """
 
-        cursor = await sqlite_db.execute(avg_query, [start_date])
+        cursor = await sqlite_db.execute(avg_query, (customer_name, start_str))
         avg_row = await cursor.fetchone()
         await cursor.close()
 
-        avg_val = avg_row[0] if avg_row and avg_row[0] is not None else 0
-
+        avg_val = float(avg_row[0]) if avg_row and avg_row[0] else 0
         if avg_val == 0:
-            logger.debug("[detect_unusual_spending] No transactions found.")
             return []
 
-        # Default threshold = 150% of average
-        if threshold is None:
-            threshold = avg_val * 1.5
+        threshold = avg_val * threshold_multiplier
 
         query = """
-            SELECT Transaction_Amount, Date, Merchant_Name, Category
-            FROM Transactions
-            WHERE Transaction_Amount > ?
-              AND Date >= ?
+            SELECT t.txn_date, t.amount, t.merchant_name, t.category
+            FROM transactions t
+            JOIN accounts a ON a.id = t.account_id
+            JOIN customers c ON a.customer_id = c.id
+            WHERE LOWER(c.name) = LOWER(?)
+              AND t.amount < 0
+              AND ABS(t.amount) > ?
+              AND t.txn_date >= ?;
         """
 
-        params = [threshold, start_date]
-
-        logger.debug(f"[detect_unusual_spending] Executing:\n{query}\nParams={params}")
+        params = (customer_name, threshold, start_str)
+        logger.debug(f"[detect_unusual_spending] Executing: Params={params}")
 
         cursor2 = await sqlite_db.execute(query, params)
         rows = await cursor2.fetchall()
         await cursor2.close()
 
-        results = [dict(row) for row in rows]
-
-        logger.debug(f"[detect_unusual_spending] Found {len(results)} unusual transactions")
+        results: List[Dict[str, Any]] = []
+        for row in rows:
+            amt = abs(float(row["amount"]))
+            results.append(
+                {
+                    "date": row["txn_date"],
+                    "amount_inr": f"₹{amt:,.2f}",
+                    "merchant": row["merchant_name"],
+                    "category": row["category"],
+                }
+            )
 
         return results
 
     except Exception as e:
         logger.error(f"❌ ERROR in detect_unusual_spending: {e}")
+        return []
+
+
+async def get_bank_schemes(
+    ctx: RunContext[Dependencies],
+    bank_name: str,
+) -> List[Dict[str, Any]]:
+    try:
+        sqlite_db = ctx.deps.sqlite_db
+
+        query = """
+            SELECT scheme_name, description, interest_rate, min_amount
+            FROM bank_schemes
+            WHERE LOWER(bank_name) = LOWER(?);
+        """
+
+        logger.debug(f"[get_bank_schemes] Executing for {bank_name}")
+        cursor = await sqlite_db.execute(query, (bank_name,))
+        rows = await cursor.fetchall()
+        await cursor.close()
+
+        schemes: List[Dict[str, Any]] = []
+        for row in rows:
+            schemes.append(
+                {
+                    "scheme_name": row["scheme_name"],
+                    "description": row["description"],
+                    "interest_rate_percent": row["interest_rate"],
+                    "minimum_amount_inr": f"₹{row['min_amount']:,.2f}",
+                }
+            )
+
+        return schemes
+
+    except Exception as e:
+        logger.error(f"❌ ERROR in get_bank_schemes: {e}")
         return []

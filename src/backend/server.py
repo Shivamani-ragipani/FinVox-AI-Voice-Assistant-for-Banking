@@ -4,8 +4,7 @@ load_dotenv()
 
 import logfire
 from fastapi import Depends, FastAPI, WebSocket
-from starlette.websockets import WebSocketDisconnect 
-from fastapi.responses import HTMLResponse
+from starlette.websockets import WebSocketDisconnect
 from groq import AsyncGroq
 from loguru import logger
 from psycopg import AsyncConnection
@@ -30,31 +29,19 @@ from ai_services.agent import Dependencies
 from ai_services.utils import format_messages_for_agent
 
 app = FastAPI(
-    title="Voice to Voice Banking Assistant",
-    lifespan=lifespan
+    title="Finvox AI Banking Assistant",
+    lifespan=lifespan,
 )
 
-# logfire setup
 logfire.configure()
 logfire.instrument_fastapi(app)
 
 
-# ---------------------------------------------------------
-# HEALTH CHECK
-# ---------------------------------------------------------
 @app.get("/health")
-async def health(websocket: WebSocket) -> dict[str, str]:
-    """Simple DB health check."""
-    try:
-        async for db_conn in get_db_conn(websocket):
-            return {"status": "ok"}
-    except Exception as e:
-        return {"status": "failed", "error": str(e)}
+async def health() -> dict[str, str]:
+    return {"status": "ok"}
 
 
-# ---------------------------------------------------------
-# WEBSOCKET: VOICE-TO-VOICE BANK ASSISTANT
-# ---------------------------------------------------------
 @app.websocket("/voice_stream")
 async def voice_to_voice(
     websocket: WebSocket,
@@ -69,12 +56,10 @@ async def voice_to_voice(
     logger.info(f"New websocket connection for conversation {conversation_id}")
 
     try:
-        while True:   # ← KEEP SOCKET ALIVE FOREVER
+        while True:
             incoming_audio_bytes = await websocket.receive_bytes()
 
-            # ------------------------------
-            # 1. TRANSCRIBE
-            # ------------------------------
+            logger.info(f"Received audio bytes: {len(incoming_audio_bytes)} bytes")
             logger.info("Starting transcription process")
 
             transcription = await transcribe_audio_data(
@@ -83,8 +68,14 @@ async def voice_to_voice(
                 model_name="whisper-large-v3-turbo",
             )
 
+            logger.info(f"STT Transcription: '{transcription}'")
+
+            if not transcription or not transcription.strip():
+                continue
+
             await websocket.send_text(f"Client: {transcription}")
 
+            # Store user message
             await store_message(
                 conn=db_conn,
                 conversation_id=conversation_id,
@@ -92,20 +83,62 @@ async def voice_to_voice(
                 content=transcription,
             )
 
-            # ------------------------------
-            # 2. GET HISTORY + FORMAT
-            # ------------------------------
             conversation_history = await get_conversation_history(
                 conn=db_conn,
                 conversation_id=conversation_id,
             )
 
+            # Count ONLY user messages
+            try:
+                user_msg_count = len([
+                    m for m in conversation_history
+                    if m.get("sender") == "user"
+                ])
+            except Exception:
+                user_msg_count = len(conversation_history)
+
+            logger.info(f"User message count: {user_msg_count}")
+
             agent_messages = format_messages_for_agent(conversation_history)
 
-            # ------------------------------
-            # 3. RUN AGENT + STREAM AUDIO
-            # ------------------------------
-            logger.info("Starting generation process")
+            normalized = transcription.strip().lower()
+
+            # Greeting detection
+            is_greeting = normalized in {
+                "hi", "hello", "hey", "hai",
+                "hi.", "hello.", "hey.", "hai.",
+            }
+
+            is_first_user_turn = user_msg_count <= 1
+
+            # ------ FIXED: Removed startswith("thank") ------
+            if is_first_user_turn and is_greeting:
+                greeting = (
+                    "Hello Shivamani! I can help you with your banking information. "
+                    "You can ask me to check your balance, show your recent transactions, "
+                    "or tell you the latest schemes from SBI or HDFC."
+                )
+
+                async with tts_handler:
+                    async for audio_chunk in tts_handler.feed(text=greeting):
+                        await websocket.send_bytes(audio_chunk)
+                    async for audio_chunk in tts_handler.flush():
+                        await websocket.send_bytes(audio_chunk)
+
+                await websocket.send_text(f"Agent: {greeting}")
+
+                await store_message(
+                    conn=db_conn,
+                    conversation_id=conversation_id,
+                    sender="agent",
+                    content=greeting,
+                )
+
+                continue
+            # ------ END FIX ------
+
+            logger.info("Starting agent generation process")
+
             full_response_text = ""
 
             async with tts_handler:
@@ -114,10 +147,8 @@ async def voice_to_voice(
                     message_history=agent_messages,
                     deps=agent_deps,
                 ) as result:
-
                     async for message in result.stream_text(delta=True):
                         full_response_text += message
-
                         async for audio_chunk in tts_handler.feed(text=message):
                             await websocket.send_bytes(audio_chunk)
 
@@ -126,6 +157,7 @@ async def voice_to_voice(
 
             await websocket.send_text(f"Agent: {full_response_text}")
 
+            # Store agent response
             await store_message(
                 conn=db_conn,
                 conversation_id=conversation_id,
