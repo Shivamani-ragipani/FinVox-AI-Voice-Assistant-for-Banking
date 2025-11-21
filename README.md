@@ -109,6 +109,7 @@ Shows the sample UI. On the side users can optionally see the conversation histo
     │   │   ├── speech_to_text.py
     │   │   └── text_to_speech.py
     │   ├── pyproject.toml
+    │   ├── reset_db.py #Queries
     │   ├── server.py # Main FastAPI server
     │   ├── tests/
     └── frontend/ # React frontend
@@ -119,14 +120,13 @@ Shows the sample UI. On the side users can optionally see the conversation histo
             ├── App.css
             ├── App.tsx # Main app
             ├── components/ # Helper components
-            │   ├── ChatContainer.tsx
-            │   ├── Header.tsx
-            │   ├── RecordingButtons.tsx
-            │   └── Status.tsx
+            │   ├── ChatBox
+            │   ├── Header
+            │   ├── Recording
+            │   └── Status
             ├── index.css
             ├── index.tsx
             ├── tests/
-            └── welcome_llama.png
 ```
 
 ### Setup
