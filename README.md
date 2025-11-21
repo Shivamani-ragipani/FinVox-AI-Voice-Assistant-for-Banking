@@ -15,7 +15,7 @@ Banks still rely heavily on text-based or UI-heavy dashboards. Users often strug
 - Allows users to get insights quickly with just **their voice**  
 - Supports smarter personal finance decision-making  
 
-### 💡 Why It’s Innovative
+###  Why It’s Innovative
 - Real-time WebSocket-based voice streaming  
 - AI agent capable of financial reasoning  
 - Full-stack STT → Intent → Analytics → TTS pipeline  
@@ -24,44 +24,44 @@ Banks still rely heavily on text-based or UI-heavy dashboards. Users often strug
 
 ---
 
-# 🏗 High-Level Architecture
+# High-Level Architecture
 
 ![architecture](./project_info/FinVox-AI-project-flow.png)
 
-## 🧠 Architecture Explained
+## Architecture Explained
 
-### 1️⃣ Frontend (React + TypeScript)
+### 1️ Frontend (React + TypeScript)
 - Captures mic input  
 - Streams audio to backend  
 - Displays chat + plays responses  
 
-### 2️⃣ WebSocket Layer  
+### 2️ WebSocket Layer  
 - Real-time streaming  
 - Low-latency voice communication  
 
-### 3️⃣ FastAPI Backend  
+### 3️ FastAPI Backend  
 - Handles STT → AI Agent → DB → TTS pipeline  
 - Async event-driven  
 
-### 4️⃣ AI Agent  
+### 4️ AI Agent  
 - Uses PydanticAI  
 - Handles reasoning, querying, summarization  
 
-### 5️⃣ Databases  
+### 5️ Databases  
 - PostgreSQL (Docker) → Stores conversation history  
 - SQLite → Contains sample transaction data  
 
-### 6️⃣ Observability  
+### 6️ Observability  
 - Logfire for monitoring + analysis  
 
 ---
 ---
 
-# 🔄 Workflow
+# Workflow
 
 ![ui](./project_info/finvox-ai-UI.png)
 
-### 📌 Voice Processing Pipeline
+###  Voice Processing Pipeline
 1. User speaks  
 2. Audio streamed → WebSocket  
 3. Groq STT converts speech → text  
